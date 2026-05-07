@@ -9,43 +9,37 @@ export default async function handler(req, res) {
   try {
     const { messages, system } = req.body;
 
-    // Gabungkan system prompt + messages untuk Gemini
-    const systemInstruction = system || "";
-
-    // Format messages ke format Gemini
-    const geminiMessages = messages
+    // Bersihkan messages
+    const cleanMessages = messages
       .filter(m => m.content && m.content.trim())
-      .map(m => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+      .map(m => ({ role: m.role, content: m.content }));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: {
-            parts: [{ text: systemInstruction }]
-          },
-          contents: geminiMessages,
-          generationConfig: {
-            maxOutputTokens: 1000,
-            temperature: 0.7,
-          },
-        }),
-      }
-    );
+    // Tambahkan system prompt di depan
+    const allMessages = system
+      ? [{ role: "system", content: system }, ...cleanMessages]
+      : cleanMessages;
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "llama-3.1-8b-instant",  // gratis & cepat
+        max_tokens: 1000,
+        messages: allMessages,
+      }),
+    });
 
     const data = await response.json();
-    console.log("Gemini response:", JSON.stringify(data));
+    console.log("Groq response:", JSON.stringify(data));
 
-    // Ambil teks jawaban dari Gemini
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    // Ambil teks jawaban
+    const text = data.choices?.[0]?.message?.content
       || "Maaf, saya tidak dapat memproses permintaan Anda saat ini.";
 
-    // Format balik agar App.jsx tetap bisa baca seperti format Anthropic
+    // Format agar sama dengan Anthropic
     res.status(200).json({
       content: [{ type: "text", text }]
     });
